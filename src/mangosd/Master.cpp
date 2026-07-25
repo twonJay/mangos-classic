@@ -51,6 +51,12 @@
 extern int m_ServiceStatus;
 #else
 #include "Platform/PosixDaemon.h"
+#include <execinfo.h>     // backtrace(), backtrace_symbols_fd() - Linux crash reporter
+#include <csignal>
+#include <fcntl.h>
+#include <unistd.h>
+#include <ctime>
+#include <cstdio>
 #endif
 
 INSTANTIATE_SINGLETON_1(Master);
@@ -534,6 +540,46 @@ void Master::_OnSignal(int s)
     signal(s, _OnSignal);
 }
 
+#ifndef _WIN32
+/// Linux crash reporter. WheatyExceptionReport (the detailed crash dump) is Windows-only,
+/// so on a fatal signal write a text backtrace to run/logs/crashes/ - one file per crash,
+/// kept indefinitely - then re-raise the signal so the process still dies (systemd restarts it).
+static volatile sig_atomic_t s_inCrashHandler = 0;
+static void _OnCrash(int s)
+{
+    if (s_inCrashHandler)                       // the handler itself faulted: just die
+    {
+        signal(s, SIG_DFL);
+        raise(s);
+        return;
+    }
+    s_inCrashHandler = 1;
+
+    // Path is relative to the working directory (run/bin), alongside the other logs.
+    char path[128];
+    snprintf(path, sizeof(path), "../logs/crashes/crash-%ld-sig%d.txt", (long)time(nullptr), s);
+
+    int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+    if (fd >= 0)
+    {
+        char head[96];
+        int len = snprintf(head, sizeof(head),
+            "CMaNGOS mangosd crash report\nSignal: %d\n\nBacktrace:\n", s);
+        if (len > 0)
+            (void)write(fd, head, (size_t)len);
+
+        void* frames[64];
+        int n = backtrace(frames, 64);
+        backtrace_symbols_fd(frames, n, fd);    // async-signal-safe (does not malloc)
+        (void)write(fd, "\n", 1);
+        close(fd);
+    }
+
+    signal(s, SIG_DFL);                         // restore default and re-raise so it still dies
+    raise(s);
+}
+#endif
+
 /// Define hook '_OnSignal' for all termination signals
 void Master::_HookSignals()
 {
@@ -541,6 +587,14 @@ void Master::_HookSignals()
     signal(SIGTERM, _OnSignal);
 #ifdef _WIN32
     signal(SIGBREAK, _OnSignal);
+#else
+    // Force libgcc's unwinder to load now so backtrace() never lazy-loads (malloc) at fault time.
+    void* warmup[4]; backtrace(warmup, 4);
+    signal(SIGSEGV, _OnCrash);
+    signal(SIGABRT, _OnCrash);
+    signal(SIGBUS,  _OnCrash);
+    signal(SIGFPE,  _OnCrash);
+    signal(SIGILL,  _OnCrash);
 #endif
 }
 
@@ -551,5 +605,11 @@ void Master::_UnhookSignals()
     signal(SIGTERM, nullptr);
 #ifdef _WIN32
     signal(SIGBREAK, nullptr);
+#else
+    signal(SIGSEGV, SIG_DFL);
+    signal(SIGABRT, SIG_DFL);
+    signal(SIGBUS,  SIG_DFL);
+    signal(SIGFPE,  SIG_DFL);
+    signal(SIGILL,  SIG_DFL);
 #endif
 }
