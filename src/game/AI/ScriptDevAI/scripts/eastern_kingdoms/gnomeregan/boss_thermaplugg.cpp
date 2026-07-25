@@ -252,10 +252,16 @@ struct ActivateBombThermaplugg : public SpellScript
 {
     void OnEffectExecute(Spell* spell, SpellEffectIndex /*effIdx*/) const override
     {
-        Unit* target = spell->GetUnitTarget();
+        // Spells 11511/11795 target a database destination (map 90), not a unit, so
+        // GetUnitTarget() is null here and dereferencing it segfaults (cmangos/issues #4030).
+        // Use the caster (Thermaplugg - always valid and inside the instance) to reach the
+        // instance data: this prevents the crash AND keeps the bomb-face mechanic working.
+        Unit* caster = spell->GetCaster();
+        if (!caster)
+            return;
         // This spell should select a random Bomb-Face and activate it if needed
         // meant to cast commented out spells at random
-        if (instance_gnomeregan* instance = dynamic_cast<instance_gnomeregan*>(target->GetInstanceData()))
+        if (instance_gnomeregan* instance = dynamic_cast<instance_gnomeregan*>(caster->GetInstanceData()))
             instance->DoActivateBombFace(urand(0, MAX_GNOME_FACES - 1));
     }
 };
