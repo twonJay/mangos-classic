@@ -160,6 +160,7 @@ class PathFinder
         void BuildPolyPath(const Vector3& startPos, const Vector3& endPos);
         void BuildPointPath(const float* startPoint, const float* endPoint);
         void BuildShortcut();
+        bool CanUseSwimShortcut(const Vector3& startPos, const Vector3& endPos) const;
 #ifdef ENABLE_PLAYERBOTS
         bool IsPointHigherThan(const Vector3& posOne, const Vector3& posTwo);
 #endif

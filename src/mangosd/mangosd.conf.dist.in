@@ -196,6 +196,12 @@ Spawns.ZoneArea = 0
 #        Default: 1 (enable)
 #                 0 (disable)
 #
+#    mmap.swimShortcut
+#        Move swimmers straight across the waterline (enter/leave water anywhere)
+#        instead of detouring to the navmesh's sparse shore-to-water links
+#        Default: 1 (enable)
+#                 0 (disable)
+#
 #    mmap.ignoreMapIds
 #        Disable mmap pathfinding on the listed maps.
 #        List of map ids with delimiter ','
@@ -267,6 +273,7 @@ vmap.enableHeight = 1
 vmap.enableIndoorCheck = 1
 DetectPosCollision = 1
 mmap.enabled = 1
+mmap.swimShortcut = 1
 mmap.ignoreMapIds = ""
 mmap.preload = 0
 PathFinder.OptimizePath = 1
