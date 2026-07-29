@@ -830,6 +830,7 @@ void World::LoadConfigSettings(bool reload)
     sLog.outString("WORLD: VMap data directory is: %svmaps", m_dataPath.c_str());
 
     setConfig(CONFIG_BOOL_MMAP_ENABLED, "mmap.enabled", true);
+    setConfig(CONFIG_BOOL_MMAP_SWIM_SHORTCUT, "mmap.swimShortcut", true);
     std::string ignoreMapIds = sConfig.GetStringDefault("mmap.ignoreMapIds");
     setConfig(CONFIG_BOOL_PRELOAD_MMAP_TILES, "mmap.preload", false);
     MMAP::MMapFactory::preventPathfindingOnMaps(ignoreMapIds.c_str());

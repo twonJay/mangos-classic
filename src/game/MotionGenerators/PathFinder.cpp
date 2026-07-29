@@ -407,6 +407,24 @@ void PathFinder::BuildPolyPath(const Vector3& startPos, const Vector3& endPos)
         if (m_pointPathLimit > m_pathPolyRefs.size())
             m_pathPolyRefs.resize(m_pointPathLimit);
     }
+
+    // Swim shortcut (mmap.swimShortcut): the navmesh only links water-surface
+    // polys to the shore where the bank is shallow enough, so mesh paths that
+    // cross the waterline detour along the beach to sparse entry polys. A real
+    // swimmer can enter or leave the water anywhere: when one end of the path is
+    // in swim-depth water and the straight segment is clear of static models and
+    // terrain, move directly instead of using the mesh.
+    if (CanUseSwimShortcut(startPos, endPos))
+    {
+        BuildShortcut();
+        // a destination bobbing above the surface (charge aims 1y high) is pulled onto it
+        GridMapLiquidData liquid;
+        if (m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z, 1.5f, &liquid) && m_pathPoints[1].z > liquid.level)
+            m_pathPoints[1].z = liquid.level;
+        m_type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
+        return;
+    }
+
     float distToStartPoly, distToEndPoly;
     float startPoint[VERTEX_SIZE] = {startPos.y, startPos.z, startPos.x};
     float endPoint[VERTEX_SIZE] = {endPos.y, endPos.z, endPos.x};
@@ -1000,6 +1018,51 @@ void PathFinder::NormalizePath()
         if (transport)
             transport->CalculatePassengerOffset(m_pathPoint.x, m_pathPoint.y, m_pathPoint.z);
     }
+}
+
+bool PathFinder::CanUseSwimShortcut(const Vector3& startPos, const Vector3& endPos) const
+{
+    if (!sWorld.getConfig(CONFIG_BOOL_MMAP_SWIM_SHORTCUT))
+        return false;
+
+    if (!m_sourceUnit || !m_sourceUnit->CanSwim() || m_sourceUnit->GetTransport())
+        return false;
+
+    // combat-scale moves only; long travel keeps using the mesh
+    const float dx = endPos.x - startPos.x;
+    const float dy = endPos.y - startPos.y;
+    const float dz = endPos.z - startPos.z;
+    const float dist2dSq = dx * dx + dy * dy;
+    if (dist2dSq + dz * dz > 75.f * 75.f)
+        return false;
+
+    // one endpoint must be inside swim-depth water; the z check keeps a target
+    // standing on a dock or bridge above the water from triggering a swim
+    TerrainInfo const* terrain = m_sourceUnit->GetTerrain();
+    GridMapLiquidData liquid;
+    bool inWater = terrain->IsSwimmable(startPos.x, startPos.y, startPos.z, 1.5f, &liquid) && startPos.z < liquid.level + 3.f;
+    if (!inWater)
+        inWater = terrain->IsSwimmable(endPos.x, endPos.y, endPos.z, 1.5f, &liquid) && endPos.z < liquid.level + 3.f;
+    if (!inWater)
+        return false;
+
+    // the straight segment must be clear of static geometry (walls, docks, boats)
+    if (!m_sourceUnit->GetMap()->IsInLineOfSight(startPos.x, startPos.y, startPos.z + 0.5f, endPos.x, endPos.y, endPos.z + 0.5f, true))
+        return false;
+
+    // and of terrain: no ridge or sandbar may rise above the swim line
+    const int steps = (int)(sqrtf(dist2dSq) / 4.f);
+    for (int i = 1; i <= steps; ++i)
+    {
+        const float t = float(i) / float(steps + 1);
+        const float px = startPos.x + dx * t;
+        const float py = startPos.y + dy * t;
+        const float pz = startPos.z + dz * t;
+        if (terrain->GetHeightStatic(px, py, pz + 2.f, false) > pz + 1.5f)
+            return false;
+    }
+
+    return true;
 }
 
 void PathFinder::BuildShortcut()
