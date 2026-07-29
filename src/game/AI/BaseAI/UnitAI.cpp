@@ -136,6 +136,10 @@ void UnitAI::JustDied(Unit* killer)
 
 void UnitAI::AttackedBy(Unit* attacker)
 {
+    // Leashing home: immune to re-engagement until reset - classic leash behavior
+    if (m_unit->GetCombatManager().IsEvadingHome())
+        return;
+
     if (!m_unit->IsInCombat() && !m_unit->GetVictim())
         AttackStart(attacker);
 }

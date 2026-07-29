@@ -2223,6 +2223,11 @@ bool Creature::CanInitiateAttack() const
     if (hasUnitState(UNIT_STAT_STUNNED | UNIT_STAT_FEIGN_DEATH))
         return false;
 
+    // Leashing home: like classic, an evading creature does not pick up new
+    // targets until it has reset at its return point.
+    if (GetCombatManager().IsEvadingHome())
+        return false;
+
     if (!m_forceAttackingCapability && HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SPAWNING | UNIT_FLAG_UNINTERACTIBLE))
         return false;
 
