@@ -74,6 +74,9 @@
  #include "AuctionHouseBot/AuctionHouseBot.h"
 #endif
 
+#include "RareSpawn/RareSpawnMgr.h"
+#include "ArenaBrawl/ArenaBrawlMgr.h"
+
 #ifdef BUILD_METRICS
  #include "Metric/Metric.h"
 #endif
@@ -1426,6 +1429,14 @@ void World::SetInitialWorldSettings()
     sLog.outString();
 #endif
 
+    sLog.outString("Initialize RareSpawnMgr...");
+    sRareSpawnMgr.Initialize();
+    sLog.outString();
+
+    sLog.outString("Initialize ArenaBrawlMgr...");
+    sArenaBrawlMgr.Initialize();
+    sLog.outString();
+
     sLog.outString("Loading WorldState");
     sWorldState.Load();
     sLog.outString();
@@ -1582,6 +1593,12 @@ void World::Update(uint32 diff)
         m_timers[WUPDATE_AHBOT].Reset();
     }
 #endif
+
+    /// <li> Cycle world rares (bounded up-window, wall-clock, grid-independent)
+    sRareSpawnMgr.Update(diff);
+
+    /// <li> Gurubashi Arena brawl (bot deployment when the treasure chest is contested)
+    sArenaBrawlMgr.Update(diff);
 
 #ifdef ENABLE_PLAYERBOTS
 #ifndef BUILD_AHBOT

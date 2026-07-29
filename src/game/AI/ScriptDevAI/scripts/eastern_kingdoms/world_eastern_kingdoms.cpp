@@ -21,6 +21,7 @@
 #include "World/WorldStateDefines.h"
 #include "GameEvents/GameEventMgr.h"
 #include "AI/ScriptDevAI/scripts/world/scourge_invasion.h"
+#include "ArenaBrawl/ArenaBrawlMgr.h"
 
 /* *********************************************************
  *                  EASTERN KINGDOMS
@@ -104,6 +105,9 @@ struct world_map_eastern_kingdoms : public ScriptedMap
             case GO_SUMMON_CIRCLE:
                 m_goEntryGuidCollection[pGo->GetEntry()].push_back(pGo->GetObjectGuid());
                 break;
+            case GO_ARENA_TREASURE_CHEST:
+                sArenaBrawlMgr.OnChestSpawned(pGo);
+                break;
         }
     }
 
@@ -113,6 +117,10 @@ struct world_map_eastern_kingdoms : public ScriptedMap
         {
             if (Creature* creature = GetSingleCreatureFromStorage(NPC_SHORT_JOHN_MITHRIL))
                 creature->GetMotionMaster()->MoveWaypoint();
+        }
+        else if (event_id == GAME_EVENT_GURUBASHI_ARENA && !activate)
+        {
+            sArenaBrawlMgr.OnArenaEventEnd();
         }
     }
 
