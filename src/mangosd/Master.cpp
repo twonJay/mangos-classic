@@ -590,11 +590,24 @@ void Master::_HookSignals()
 #else
     // Force libgcc's unwinder to load now so backtrace() never lazy-loads (malloc) at fault time.
     void* warmup[4]; backtrace(warmup, 4);
-    signal(SIGSEGV, _OnCrash);
-    signal(SIGABRT, _OnCrash);
-    signal(SIGBUS,  _OnCrash);
-    signal(SIGFPE,  _OnCrash);
-    signal(SIGILL,  _OnCrash);
+    // Run _OnCrash on a dedicated stack: a stack-overflow SIGSEGV cannot invoke a
+    // handler on the exhausted stack, so without sigaltstack those crashes (e.g.
+    // runaway recursion) die with no report at all.
+    static char s_altStack[64 * 1024];
+    stack_t altStack;
+    altStack.ss_sp = s_altStack;
+    altStack.ss_size = sizeof(s_altStack);
+    altStack.ss_flags = 0;
+    sigaltstack(&altStack, nullptr);
+    struct sigaction sa = {};
+    sa.sa_handler = _OnCrash;
+    sa.sa_flags = SA_ONSTACK;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, nullptr);
+    sigaction(SIGABRT, &sa, nullptr);
+    sigaction(SIGBUS,  &sa, nullptr);
+    sigaction(SIGFPE,  &sa, nullptr);
+    sigaction(SIGILL,  &sa, nullptr);
 #endif
 }
 
