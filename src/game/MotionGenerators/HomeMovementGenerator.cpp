@@ -49,17 +49,10 @@ void HomeMovementGenerator<Creature>::_setTargetLocation(Creature& owner)
 
     if (pos.IsEmpty())
         owner.GetRespawnCoord(pos.x, pos.y, pos.z, &pos.o);
-    if (owner.GetDistance(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(), DIST_CALC_NONE, owner.GetTransport()) > 150.f * 150.f)
-    {
-        if (!owner.IsInWorld() || !owner.GetMap()->IsDungeon())
-        {
-            arrived = true;
-            Finalize(owner);
-            owner.SetRespawnDelay(5, true);
-            owner.ForcedDespawn(1);
-            return;
-        }
-    }
+    // No distance cap: creatures kited any distance run all the way home like on
+    // classic (the old >150y despawn+respawn looked like a vanish to players).
+    // Returns longer than one spline's point budget are handled by Update(),
+    // which keeps launching further legs until the creature stands at home.
 
     PathFinder path(&owner);
 
@@ -81,7 +74,26 @@ void HomeMovementGenerator<Creature>::_setTargetLocation(Creature& owner)
 
 bool HomeMovementGenerator<Creature>::Update(Creature& owner, const uint32& /*time_diff*/)
 {
-    arrived = owner.movespline->Finalized();
+    if (owner.movespline->Finalized())
+    {
+        // A long return home exceeds a single spline's point budget and ends
+        // mid-route: if the creature is not standing at its return point yet,
+        // launch the next leg instead of declaring arrival.
+        if (!owner.hasUnitState(UNIT_STAT_NOT_MOVE))
+        {
+            Position pos;
+            if (owner.GetMotionMaster()->empty() || !owner.GetMotionMaster()->top()->GetResetPosition(owner, pos.x, pos.y, pos.z, pos.o))
+                owner.GetCombatStartPosition(pos);
+            if (pos.IsEmpty())
+                owner.GetRespawnCoord(pos.x, pos.y, pos.z, &pos.o);
+            if (owner.GetDistance(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(), DIST_CALC_NONE, owner.GetTransport()) > 25.f)
+            {
+                _setTargetLocation(owner);
+                return true;
+            }
+        }
+        arrived = true;
+    }
     return !arrived;
 }
 
