@@ -153,6 +153,22 @@ void AuctionHouseBot::Initialize()
             }
             while (queryResult->NextRow());
         }
+
+        // per random-property (suffix) price overrides
+        m_itemSuffixData.clear();
+        auto suffixResult = CharacterDatabase.PQuery("SELECT item, random_property_id, value FROM ahbot_items_suffix");
+        if (suffixResult)
+        {
+            do
+            {
+                Field* fields = suffixResult->Fetch();
+                uint32 itemId = fields[0].GetUInt32();
+                uint32 propId = fields[1].GetUInt32();
+                uint32 value = fields[2].GetUInt32();
+                m_itemSuffixData[((uint64)itemId << 32) | propId] = value;
+            }
+            while (suffixResult->NextRow());
+        }
     }
 }
 
@@ -239,17 +255,27 @@ void AuctionHouseBot::Update()
                     continue; // item class is filtered out
             }
 
-            uint32 itemValue = ValueWithVariance(iterator != m_itemData.end() ? iterator->second.Value : CalculateBuyoutPrice(prototype));
+            uint32 baseValue = iterator != m_itemData.end() ? iterator->second.Value : CalculateBuyoutPrice(prototype);
             for (uint32 stackCounter = 0; stackCounter < itemEntry.second; stackCounter += prototype->GetMaxStackSize())
             {
                 uint32 count = itemEntry.second - stackCounter > prototype->GetMaxStackSize() ? prototype->GetMaxStackSize() : itemEntry.second - stackCounter;
-                uint32 buyoutPrice = itemValue * count;
                 Item* item = Item::CreateItem(itemEntry.first, count);
-                if (buyoutPrice == 0 || !item)
+                if (!item)
+                    continue;
+                // per-suffix pricing: if the item rolled a random property, use its specific market value when known
+                uint32 perItemValue = baseValue;
+                int32 randomPropertyId = item->GetItemRandomPropertyId();
+                if (randomPropertyId != 0)
+                {
+                    auto suffixIterator = m_itemSuffixData.find(((uint64)itemEntry.first << 32) | (uint32)randomPropertyId);
+                    if (suffixIterator != m_itemSuffixData.end() && suffixIterator->second > 0)
+                        perItemValue = suffixIterator->second;
+                }
+                uint32 buyoutPrice = ValueWithVariance(perItemValue) * count;
+                if (buyoutPrice == 0)
                     continue; // don't put up items we don't know the value of
                 uint32 bidPrice = buyoutPrice * (urand(m_auctionBidMin, m_auctionBidMax)) / 100;
-                if (item)
-                    auctionHouse->AddAuction(sAuctionHouseStore.LookupEntry(houseType == AUCTION_HOUSE_ALLIANCE ? 1 : (houseType == AUCTION_HOUSE_HORDE ? 6 : 7)), item, urand(m_auctionTimeMin, m_auctionTimeMax) * HOUR, bidPrice, buyoutPrice);
+                auctionHouse->AddAuction(sAuctionHouseStore.LookupEntry(houseType == AUCTION_HOUSE_ALLIANCE ? 1 : (houseType == AUCTION_HOUSE_HORDE ? 6 : 7)), item, urand(m_auctionTimeMin, m_auctionTimeMax) * HOUR, bidPrice, buyoutPrice);
             }
         }
     } else if (m_houseAction >= MAX_AUCTION_HOUSE_TYPE && urand(0, 99) < m_chanceBuy)
