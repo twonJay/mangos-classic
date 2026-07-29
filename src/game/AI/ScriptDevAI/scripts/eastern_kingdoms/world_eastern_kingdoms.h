@@ -15,6 +15,9 @@ enum
 
     NPC_SHORT_JOHN_MITHRIL      = 14508,
 
+    // Gurubashi Arena Booty Run treasure chest
+    GO_ARENA_TREASURE_CHEST     = 179697,
+
     // Quest: Stranglethorn Fever Waves
     STV_FEVER_GROUP_01          = 18011,
     STV_FEVER_GROUP_02          = 18012,
