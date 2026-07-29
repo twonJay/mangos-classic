@@ -120,6 +120,9 @@ class AuctionHouseBot
         std::unordered_set<uint32> m_vendorItems;
 
         std::unordered_map<uint32, AuctionHouseBotItemData> m_itemData;
+
+        // per random-property (suffix) price overrides, key = ((uint64)item << 32) | (uint32)randomPropertyId
+        std::unordered_map<uint64, uint32> m_itemSuffixData;
 };
 
 #define sAuctionHouseBot MaNGOS::Singleton<AuctionHouseBot>::Instance()
