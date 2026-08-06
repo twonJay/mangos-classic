@@ -75,6 +75,7 @@
 #endif
 
 #include "RareSpawn/RareSpawnMgr.h"
+#include "ChestSpawn/ChestSpawnMgr.h"
 #include "ArenaBrawl/ArenaBrawlMgr.h"
 
 #ifdef BUILD_METRICS
@@ -1434,6 +1435,10 @@ void World::SetInitialWorldSettings()
     sRareSpawnMgr.Initialize();
     sLog.outString();
 
+    sLog.outString("Initialize ChestSpawnMgr...");
+    sChestSpawnMgr.Initialize();
+    sLog.outString();
+
     sLog.outString("Initialize ArenaBrawlMgr...");
     sArenaBrawlMgr.Initialize();
     sLog.outString();
@@ -1597,6 +1602,9 @@ void World::Update(uint32 diff)
 
     /// <li> Cycle world rares (bounded up-window, wall-clock, grid-independent)
     sRareSpawnMgr.Update(diff);
+
+    /// <li> Cycle open-world chests (same model; bots never loot them)
+    sChestSpawnMgr.Update(diff);
 
     /// <li> Gurubashi Arena brawl (bot deployment when the treasure chest is contested)
     sArenaBrawlMgr.Update(diff);
