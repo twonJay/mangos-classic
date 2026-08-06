@@ -25,6 +25,7 @@
 #include "Entities/ObjectGuid.h"
 #include "Entities/Player.h"
 #include "AuctionHouse/AuctionHouseMgr.h"
+#include "AuctionHouseBot/AuctionHouseBot.h"
 #include "Mails/Mail.h"
 #include "Util/Util.h"
 #include "Chat/Chat.h"
@@ -297,6 +298,13 @@ void WorldSession::HandleAuctionSellItem(WorldPacket& recv_data)
     if ((it->GetProto()->Flags & ITEM_FLAG_CONJURED) || it->GetUInt32Value(ITEM_FIELD_DURATION))
     {
         SendAuctionCommandResult(nullptr, AUCTION_STARTED, AUCTION_ERR_INVENTORY, EQUIP_ERR_ITEM_NOT_FOUND);
+        return;
+    }
+
+    // Server rule: progression-gated items (ahbot_items value = 0) cannot be auctioned
+    if (sAuctionHouseBot.IsItemBlacklisted(it->GetEntry()))
+    {
+        SendAuctionCommandResult(nullptr, AUCTION_STARTED, AUCTION_ERR_INVENTORY, EQUIP_ERR_ITEM_LOCKED);
         return;
     }
 

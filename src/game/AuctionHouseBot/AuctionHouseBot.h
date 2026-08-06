@@ -59,6 +59,14 @@ class AuctionHouseBot
         void SetItemData(uint32 item, AuctionHouseBotItemData& itemData, bool reset = false);
         AuctionHouseBotItemData GetItemData(uint32 item);
 
+        // An ahbot_items row with value = 0 blacklists the item: the bot never
+        // lists it, and HandleAuctionSellItem refuses it from players too.
+        bool IsItemBlacklisted(uint32 item) const
+        {
+            auto iterator = m_itemData.find(item);
+            return iterator != m_itemData.end() && iterator->second.Value == 0;
+        }
+
     private:
         uint32 GetMinMaxConfig(const char* config, uint32 minValue, uint32 maxValue, uint32 defaultValue);
         void ParseLootConfig(char const* fieldname, std::vector<int32>& lootConfig);
