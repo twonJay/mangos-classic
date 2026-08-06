@@ -12380,7 +12380,20 @@ void Unit::SetSwim(bool enable)
 
 void Unit::SetCanFly(bool enable)
 {
-    // TBC+
+    // Vanilla protocol has no fly mode; flight is the 1.12 client's native
+    // swim-in-air, entered when its own movement flags carry the swim+fly bits
+    // (bit values verified against the client, matching vmangos: 0x400, 0x200000,
+    // 0x800000, 0x1000000). Echoing them back in a self-addressed heartbeat makes
+    // the client take over; movement stays client-authoritative from there.
+    uint32 const flyFlags = MOVEFLAG_LEVITATING | MOVEFLAG_SWIMMING | MOVEFLAG_CAN_FLY | MOVEFLAG_FLYING_OLD;
+
+    if (enable)
+        m_movementInfo.AddMovementFlag(MovementFlags(flyFlags));
+    else
+        m_movementInfo.RemoveMovementFlag(MovementFlags(flyFlags));
+
+    if (IsInWorld())
+        SendHeartBeat();
 }
 
 void Unit::SetFeatherFall(bool enable)
