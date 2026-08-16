@@ -35,6 +35,11 @@ class GenericTransport : public GameObject
         bool RemovePassenger(Unit* passenger);
         bool AddPetToTransport(Unit* passenger, Pet* pet);
 
+        // Is a world-space point on this transport's deck (model bounds, padded)?
+        // Used to let a caster aim ground spells at their own deck without the
+        // LoS ray clipping the moving hull.
+        bool IsPointOnBoard(float x, float y, float z) const;
+
         void UpdatePosition(float x, float y, float z, float o);
         void UpdatePassengerPosition(WorldObject* object);
 

@@ -23,6 +23,7 @@
 #include "Globals/ObjectMgr.h"
 #include "Entities/ObjectGuid.h"
 #include "MotionGenerators/Path.h"
+#include "vmap/GameObjectModel.h"
 
 #include "Server/WorldPacket.h"
 #include "Server/DBCStores.h"
@@ -344,6 +345,20 @@ bool GenericTransport::AddPetToTransport(Unit* passenger, Pet* pet)
         return true;
     }
     return false;
+}
+
+bool GenericTransport::IsPointOnBoard(float x, float y, float z) const
+{
+    if (!m_model)
+        return false;
+
+    // world-space model box, slightly padded so deck-edge targets still count;
+    // axis-aligned, so a rotated hull accepts a little water near the corners
+    G3D::AABox const& bounds = m_model->getBounds();
+    float const pad = 2.0f;
+    return x >= bounds.low().x - pad && x <= bounds.high().x + pad &&
+           y >= bounds.low().y - pad && y <= bounds.high().y + pad &&
+           z >= bounds.low().z - pad && z <= bounds.high().z + pad;
 }
 
 void Transport::Update(const uint32 /*diff*/)
