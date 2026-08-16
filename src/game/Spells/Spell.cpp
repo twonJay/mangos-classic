@@ -31,6 +31,7 @@
 #include "Entities/Pet.h"
 #include "Entities/Unit.h"
 #include "Entities/DynamicObject.h"
+#include "Entities/Transports.h"
 #include "Groups/Group.h"
 #include "Entities/UpdateData.h"
 #include "Globals/ObjectAccessor.h"
@@ -2948,9 +2949,13 @@ void Spell::Prepare()
             m_caster->AI()->OnSpellCastStateChange(this, true, m_targets.getUnitTarget());
     }
 
-    m_castPositionX = m_trueCaster->GetPositionX();
-    m_castPositionY = m_trueCaster->GetPositionY();
-    m_castPositionZ = m_trueCaster->GetPositionZ();
+    // On a transport the world position changes every tick while the passenger
+    // stands still - store transport-local coordinates so the moved-check in
+    // update() doesn't cancel every cast aboard a moving boat/zeppelin
+    Position const& castPos = m_trueCaster->GetPosition(m_trueCaster->GetTransport());
+    m_castPositionX = castPos.x;
+    m_castPositionY = castPos.y;
+    m_castPositionZ = castPos.z;
     m_castOrientation = m_trueCaster->GetOrientation();
 
     OnSuccessfulStart();
@@ -3433,8 +3438,10 @@ void Spell::update(uint32 difftime)
     }
 
     // check if the player or unit caster has moved before the spell finished (exclude casting on vehicles)
+    // compared in transport-local space when aboard one, matching how the cast position was stored
+    Position const& casterPos = m_trueCaster->GetPosition(m_trueCaster->GetTransport());
     if ((m_trueCaster->IsUnit() && m_timer != 0) &&
-            (m_castPositionX != m_trueCaster->GetPositionX() || m_castPositionY != m_trueCaster->GetPositionY() || m_castPositionZ != m_trueCaster->GetPositionZ()) &&
+            (m_castPositionX != casterPos.x || m_castPositionY != casterPos.y || m_castPositionZ != casterPos.z) &&
             (m_spellInfo->Effect[EFFECT_INDEX_0] != SPELL_EFFECT_STUCK || !m_trueCaster->m_movementInfo.HasMovementFlag(MOVEFLAG_FALLINGFAR)))
     {
         // always cancel for channeled spells
@@ -6260,8 +6267,15 @@ SpellCastResult Spell::CheckRange(bool strict)
         if (minRange && dist < minRange * minRange)
             return SPELL_FAILED_TOO_CLOSE;
         if (!IsIgnoreLosSpell(m_spellInfo))
-            if (!m_trueCaster->IsWithinLOS(m_targets.m_destPos.x, m_targets.m_destPos.y, m_targets.m_destPos.z + 1.f))
+        {
+            // aiming at the deck of your own moving transport: the LoS ray clips
+            // the vehicle's model as it shifts between updates - a caster can
+            // always see their own deck
+            GenericTransport* transport = m_trueCaster->GetTransport();
+            bool onOwnDeck = transport && transport->IsPointOnBoard(m_targets.m_destPos.x, m_targets.m_destPos.y, m_targets.m_destPos.z);
+            if (!onOwnDeck && !m_trueCaster->IsWithinLOS(m_targets.m_destPos.x, m_targets.m_destPos.y, m_targets.m_destPos.z + 1.f))
                 return SPELL_FAILED_LINE_OF_SIGHT;
+        }
     }
 
     if (m_targets.m_targetMask == TARGET_FLAG_SOURCE_LOCATION)
