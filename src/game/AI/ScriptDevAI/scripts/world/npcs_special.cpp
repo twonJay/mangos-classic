@@ -132,6 +132,8 @@ struct Location
     float x, y, z, o;
 };
 
+// z values sit on the bunk tops (the room's floor is at ~12.0); temp summons
+// get ground-snapped at create, so the spawner re-relocates patients up after
 static Location AllianceCoords[] =
 {
     { -3757.38f, -4533.05f, 14.16f, 3.62f},                 // Top-far-right bunk as seen from entrance
@@ -191,6 +193,7 @@ struct npc_doctorAI : public ScriptedAI
     uint32 m_uiSummonPatientCount;
     uint32 m_uiPatientDiedCount;
     uint32 m_uiPatientSavedCount;
+    uint32 m_uiSanityTimer;
 
     bool m_bIsEventInProgress;
 
@@ -205,6 +208,7 @@ struct npc_doctorAI : public ScriptedAI
         m_uiSummonPatientCount = 0;
         m_uiPatientDiedCount = 0;
         m_uiPatientSavedCount = 0;
+        m_uiSanityTimer = 10000;
 
         m_lPatientGuids.clear();
         m_vPatientSummonCoordinates.clear();
@@ -217,6 +221,7 @@ struct npc_doctorAI : public ScriptedAI
     void BeginEvent(Player* pPlayer);
     void PatientDied(Location* pPoint);
     void PatientSaved(Creature* pSoldier, Player* pPlayer, Location* pPoint);
+    void FailQuestForParticipants(Player* pPlayer);
     void UpdateAI(const uint32 uiDiff) override;
 };
 
@@ -273,13 +278,12 @@ struct npc_injured_patientAI : public ScriptedAI
         if (pCaster->GetTypeId() == TYPEID_PLAYER && m_creature->IsAlive() && pSpell->Id == 20804)
         {
             Player* pPlayer = static_cast<Player*>(pCaster);
-            if (pPlayer->GetQuestStatus(QUEST_TRIAGE_A) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(QUEST_TRIAGE_H) == QUEST_STATUS_INCOMPLETE)
+            // always notify the doctor - it reclaims the cot even when this
+            // caster gets no credit, else the spawn pool leaks dry
+            if (Creature* pDoctor = m_creature->GetMap()->GetCreature(m_doctorGuid))
             {
-                if (Creature* pDoctor = m_creature->GetMap()->GetCreature(m_doctorGuid))
-                {
-                    if (npc_doctorAI* pDocAI = dynamic_cast<npc_doctorAI*>(pDoctor->AI()))
-                        pDocAI->PatientSaved(m_creature, pPlayer, m_pCoord);
-                }
+                if (npc_doctorAI* pDocAI = dynamic_cast<npc_doctorAI*>(pDoctor->AI()))
+                    pDocAI->PatientSaved(m_creature, pPlayer, m_pCoord);
             }
             // make not selectable
             m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
@@ -354,12 +358,21 @@ npc_doctor (continue)
 
 void npc_doctorAI::BeginEvent(Player* pPlayer)
 {
+    // group members accepting via the party-accept dialog join the running
+    // event instead of restarting it and duplicating the cot pool
+    if (m_bIsEventInProgress)
+        return;
+
     m_playerGuid = pPlayer->GetObjectGuid();
 
     m_uiSummonPatientTimer = 10000;
     m_uiSummonPatientCount = 0;
     m_uiPatientDiedCount = 0;
     m_uiPatientSavedCount = 0;
+    m_uiSanityTimer = 10000;
+
+    m_lPatientGuids.clear();
+    m_vPatientSummonCoordinates.clear();
 
     switch (m_creature->GetEntry())
     {
@@ -377,62 +390,90 @@ void npc_doctorAI::BeginEvent(Player* pPlayer)
     m_creature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
 }
 
-void npc_doctorAI::PatientDied(Location* pPoint)
+void npc_doctorAI::FailQuestForParticipants(Player* pPlayer)
 {
-    Player* pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid);
-
-    if (pPlayer && (pPlayer->GetQuestStatus(QUEST_TRIAGE_A) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(QUEST_TRIAGE_H) == QUEST_STATUS_INCOMPLETE))
+    if (Group* pGroup = pPlayer->GetGroup())
     {
-        ++m_uiPatientDiedCount;
-
-        if (m_uiPatientDiedCount > 5)
+        for (GroupReference* pRef = pGroup->GetFirstMember(); pRef != nullptr; pRef = pRef->next())
         {
-            if (pPlayer->GetQuestStatus(QUEST_TRIAGE_A) == QUEST_STATUS_INCOMPLETE)
-                pPlayer->FailQuest(QUEST_TRIAGE_A);
-            else if (pPlayer->GetQuestStatus(QUEST_TRIAGE_H) == QUEST_STATUS_INCOMPLETE)
-                pPlayer->FailQuest(QUEST_TRIAGE_H);
+            Player* pMember = pRef->getSource();
+            if (!pMember || !pMember->IsAtGroupRewardDistance(m_creature))
+                continue;
 
-            Reset();
-            return;
+            if (pMember->GetQuestStatus(QUEST_TRIAGE_A) == QUEST_STATUS_INCOMPLETE)
+                pMember->FailQuest(QUEST_TRIAGE_A);
+            else if (pMember->GetQuestStatus(QUEST_TRIAGE_H) == QUEST_STATUS_INCOMPLETE)
+                pMember->FailQuest(QUEST_TRIAGE_H);
         }
-
-        m_vPatientSummonCoordinates.push_back(pPoint);
     }
     else
-        // If no player or player abandon quest in progress
+    {
+        if (pPlayer->GetQuestStatus(QUEST_TRIAGE_A) == QUEST_STATUS_INCOMPLETE)
+            pPlayer->FailQuest(QUEST_TRIAGE_A);
+        else if (pPlayer->GetQuestStatus(QUEST_TRIAGE_H) == QUEST_STATUS_INCOMPLETE)
+            pPlayer->FailQuest(QUEST_TRIAGE_H);
+    }
+}
+
+void npc_doctorAI::PatientDied(Location* pPoint)
+{
+    if (!m_bIsEventInProgress)
+        return;
+
+    ++m_uiPatientDiedCount;
+
+    if (m_uiPatientDiedCount > 5)
+    {
+        if (Player* pPlayer = m_creature->GetMap()->GetPlayer(m_playerGuid))
+            FailQuestForParticipants(pPlayer);
+
+        Reset();
+        return;
+    }
+
+    // always reclaim the cot so the spawner cannot starve
+    if (pPoint)
+        m_vPatientSummonCoordinates.push_back(pPoint);
+
+    // event owner logged off or abandoned the quest: end the event
+    Player* pOwner = m_creature->GetMap()->GetPlayer(m_playerGuid);
+    if (!pOwner || (pOwner->GetQuestStatus(QUEST_TRIAGE_A) != QUEST_STATUS_INCOMPLETE && pOwner->GetQuestStatus(QUEST_TRIAGE_H) != QUEST_STATUS_INCOMPLETE))
         Reset();
 }
 
 void npc_doctorAI::PatientSaved(Creature* /*soldier*/, Player* pPlayer, Location* pPoint)
 {
-    if (pPlayer && m_playerGuid == pPlayer->GetObjectGuid())
+    if (!m_bIsEventInProgress || !pPlayer)
+        return;
+
+    // always reclaim the cot, no matter who bandaged - losing it starved the
+    // spawner and wedged the doctor when several players shared the event
+    if (pPoint)
+        m_vPatientSummonCoordinates.push_back(pPoint);
+
+    // bandages from any player on the quest count toward the shared total
+    if (pPlayer->GetQuestStatus(QUEST_TRIAGE_A) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(QUEST_TRIAGE_H) == QUEST_STATUS_INCOMPLETE)
     {
-        if (pPlayer->GetQuestStatus(QUEST_TRIAGE_A) == QUEST_STATUS_INCOMPLETE || pPlayer->GetQuestStatus(QUEST_TRIAGE_H) == QUEST_STATUS_INCOMPLETE)
+        ++m_uiPatientSavedCount;
+
+        if (m_uiPatientSavedCount == 15)
         {
-            ++m_uiPatientSavedCount;
-
-            if (m_uiPatientSavedCount == 15)
+            for (GuidList::const_iterator itr = m_lPatientGuids.begin(); itr != m_lPatientGuids.end(); ++itr)
             {
-                for (GuidList::const_iterator itr = m_lPatientGuids.begin(); itr != m_lPatientGuids.end(); ++itr)
-                {
-                    if (Creature* Patient = m_creature->GetMap()->GetCreature(*itr))
-                        Patient->SetDeathState(JUST_DIED);
-                }
-
-                switch (m_creature->GetEntry())
-                {
-                    case DOCTOR_ALLIANCE: pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_TRIAGE_A, m_creature); break;
-                    case DOCTOR_HORDE:    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_TRIAGE_H, m_creature); break;
-                    default:
-                        script_error_log("Invalid entry for Triage doctor. Please check your database");
-                        return;
-                }
-
-                Reset();
-                return;
+                if (Creature* Patient = m_creature->GetMap()->GetCreature(*itr))
+                    Patient->SetDeathState(JUST_DIED);
             }
 
-            m_vPatientSummonCoordinates.push_back(pPoint);
+            switch (m_creature->GetEntry())
+            {
+                case DOCTOR_ALLIANCE: pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_TRIAGE_A, m_creature); break;
+                case DOCTOR_HORDE:    pPlayer->RewardPlayerAndGroupAtEventExplored(QUEST_TRIAGE_H, m_creature); break;
+                default:
+                    script_error_log("Invalid entry for Triage doctor. Please check your database");
+                    return;
+            }
+
+            Reset();
         }
     }
 }
@@ -443,6 +484,41 @@ void npc_doctorAI::UpdateAI(const uint32 uiDiff)
     {
         Reset();
         return;
+    }
+
+    // dead-end watchdog: no patient alive and nothing left to summon means the
+    // event can never advance - without this the doctor stays uninteractible
+    // forever (e.g. a patient despawned without its died/saved callback firing)
+    if (m_bIsEventInProgress)
+    {
+        if (m_uiSanityTimer < uiDiff)
+        {
+            m_uiSanityTimer = 10000;
+
+            if (m_vPatientSummonCoordinates.empty())
+            {
+                bool bAnyPatientAlive = false;
+                for (GuidList::const_iterator itr = m_lPatientGuids.begin(); itr != m_lPatientGuids.end(); ++itr)
+                {
+                    if (Creature* pPatient = m_creature->GetMap()->GetCreature(*itr))
+                    {
+                        if (pPatient->IsAlive())
+                        {
+                            bAnyPatientAlive = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!bAnyPatientAlive)
+                {
+                    Reset();
+                    return;
+                }
+            }
+        }
+        else
+            m_uiSanityTimer -= uiDiff;
     }
 
     if (m_bIsEventInProgress && !m_vPatientSummonCoordinates.empty())
@@ -465,6 +541,11 @@ void npc_doctorAI::UpdateAI(const uint32 uiDiff)
             {
                 // 2.4.3, this flag appear to be required for client side item->spell to work (TARGET_UNIT_FRIEND)
                 Patient->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PVP);
+
+                // summon creation ground-snaps the z under the bunks; put the
+                // patient back on top (they never move, so it sticks)
+                Patient->Relocate((*itr)->x, (*itr)->y, (*itr)->z, (*itr)->o);
+                Patient->SendHeartBeat();
 
                 m_lPatientGuids.push_back(Patient->GetObjectGuid());
 
