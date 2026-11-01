@@ -281,7 +281,15 @@ void ChaseMovementGenerator::HandleTargetedMovement(Unit& owner, const uint32& t
                     return;
                 }
                 if (m_reachable == false)
+                {
+                    // refused to follow a swimming target into the water: treat
+                    // the edge as arrival so IsReachable() goes false and the
+                    // evade timer runs (vanilla shore mobs give up on swimmers
+                    // after a few seconds rather than fighting the waterline)
+                    if (this->i_offset == 0.f && this->i_target->m_movementInfo.HasMovementFlag(MOVEFLAG_SWIMMING) && !owner.CanSwim() && !owner.IsPlayerControlled())
+                        this->i_targetReached = true;
                     return;
+                }
             }
             if (!IsReachablePositionToTarget(owner, owner.GetPositionX(), owner.GetPositionY(), owner.GetPositionZ(), *this->i_target.getTarget()))
                 m_reachable = false;
@@ -693,6 +701,15 @@ bool ChaseMovementGenerator::IsReachablePositionToTarget(Unit& owner, float x, f
         {
             // if npc cant fly and target flies too high up, need to evade
             if (std::max(std::fabs(target.GetPositionZ() - z) - owner.GetCombatReach() - target.GetCombatReach(), float(0))  > CREATURE_Z_ATTACK_RANGE_MELEE)
+                return false;
+        }
+        else if (target.m_movementInfo.HasMovementFlag(MOVEFLAG_SWIMMING) && !owner.CanSwim() && !owner.IsPlayerControlled())
+        {
+            // land unit vs a target swimming too far above the reachable floor:
+            // refuse the position so the mob holds at the water's edge instead
+            // of wading in underneath the swimmer (pets are exempt - they
+            // follow their owner anywhere)
+            if (std::max(std::fabs(target.GetPositionZ() - z) - owner.GetCombatReach() - target.GetCombatReach(), float(0)) > CREATURE_Z_ATTACK_RANGE_MELEE)
                 return false;
         }
     }

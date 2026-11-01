@@ -640,6 +640,8 @@ class Creature : public Unit
         bool CanWalk() const override { return (GetCreatureInfo()->InhabitType & INHABIT_GROUND) != 0; }
         bool CanSwim() const override { return (GetCreatureInfo()->InhabitType & INHABIT_WATER) != 0; }
         bool IsSwimming() const { return m_movementInfo.HasMovementFlag(MOVEFLAG_SWIMMING); }
+        bool IsForcedToWalkInWater() const { return (GetCreatureInfo()->ExtraFlags & CREATURE_EXTRA_FLAG_WALK_IN_WATER) != 0; }
+        void UpdateSwimmingState();
         bool CanFly() const override { return (GetCreatureInfo()->InhabitType & INHABIT_AIR) || m_movementInfo.HasMovementFlag((MovementFlags)(MOVEFLAG_LEVITATING | MOVEFLAG_HOVER | MOVEFLAG_CAN_FLY)); }
         bool IsFlying() const override { return m_movementInfo.HasMovementFlag((MovementFlags)(MOVEFLAG_FLYING | MOVEFLAG_HOVER | MOVEFLAG_LEVITATING)); }
         bool IsTrainerOf(Player* pPlayer, bool msg) const;
@@ -986,6 +988,7 @@ class Creature : public Unit
 
         Position m_combatStartPos;                          // after combat contains last position
         Position m_respawnPos;
+        Position m_lastSwimStatePos;                        // where UpdateSwimmingState last recomputed the swim flags
 
         uint32 m_gameEventVendorId;                         // game event creature data vendor id override
 
