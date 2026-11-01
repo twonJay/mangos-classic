@@ -76,7 +76,9 @@
 
 #include "RareSpawn/RareSpawnMgr.h"
 #include "ChestSpawn/ChestSpawnMgr.h"
+#include "NodeCompetition/NodeCompetitionMgr.h"
 #include "ArenaBrawl/ArenaBrawlMgr.h"
+#include "FishingDerby/FishingDerbyMgr.h"
 
 #ifdef BUILD_METRICS
  #include "Metric/Metric.h"
@@ -832,6 +834,7 @@ void World::LoadConfigSettings(bool reload)
 
     setConfig(CONFIG_BOOL_MMAP_ENABLED, "mmap.enabled", true);
     setConfig(CONFIG_BOOL_MMAP_SWIM_SHORTCUT, "mmap.swimShortcut", true);
+    setConfig(CONFIG_BOOL_MOVEMENT_STAMP_AT_RECEIPT, "Movement.StampAtReceipt", false);
     std::string ignoreMapIds = sConfig.GetStringDefault("mmap.ignoreMapIds");
     setConfig(CONFIG_BOOL_PRELOAD_MMAP_TILES, "mmap.preload", false);
     MMAP::MMapFactory::preventPathfindingOnMaps(ignoreMapIds.c_str());
@@ -1440,10 +1443,17 @@ void World::SetInitialWorldSettings()
 
     sLog.outString("Initialize ChestSpawnMgr...");
     sChestSpawnMgr.Initialize();
+
+    sLog.outString("Initialize NodeCompetitionMgr...");
+    sNodeCompetitionMgr.Initialize();
     sLog.outString();
 
     sLog.outString("Initialize ArenaBrawlMgr...");
     sArenaBrawlMgr.Initialize();
+    sLog.outString();
+
+    sLog.outString("Initialize FishingDerbyMgr...");
+    sFishingDerbyMgr.Initialize();
     sLog.outString();
 
     sLog.outString("Loading WorldState");
@@ -1609,8 +1619,14 @@ void World::Update(uint32 diff)
     /// <li> Cycle open-world chests (same model; bots never loot them)
     sChestSpawnMgr.Update(diff);
 
+    /// <li> Simulate competition for herb and ore nodes (bots barely gather)
+    sNodeCompetitionMgr.Update(diff);
+
     /// <li> Gurubashi Arena brawl (bot deployment when the treasure chest is contested)
     sArenaBrawlMgr.Update(diff);
+
+    /// <li> Stranglethorn Fishing Extravaganza rival race
+    sFishingDerbyMgr.Update(diff);
 
 #ifdef ENABLE_PLAYERBOTS
 #ifndef BUILD_AHBOT
