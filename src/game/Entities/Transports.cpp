@@ -512,7 +512,10 @@ void GenericTransport::UpdatePosition(float x, float y, float z, float o)
 
 void GenericTransport::UpdatePassengerPositions(PassengerSet& passengers)
 {
-    for (const auto passenger : passengers)
+    // iterate a copy - UpdatePassengerPosition ejects passengers whose offsets
+    // are corrupted, which erases them from the live set
+    PassengerSet current(passengers);
+    for (const auto passenger : current)
         UpdatePassengerPosition(passenger);
 }
 
@@ -537,7 +540,21 @@ void GenericTransport::UpdatePassengerPosition(WorldObject* passenger)
     CalculatePassengerPosition(x, y, z, &o);
     if (!MaNGOS::IsValidMapCoord(x, y, z))
     {
-        sLog.outError("[TRANSPORTS] Object %s [guid %u] has invalid position on transport.", passenger->GetName(), passenger->GetGUIDLow());
+        // corrupted offset (world coords stored as transport-local, etc.) - the
+        // state can never heal on its own, so eject instead of logging forever
+        sLog.outError("[TRANSPORTS] Object %s [guid %u] has invalid position on transport - ejecting.", passenger->GetName(), passenger->GetGUIDLow());
+        RemovePassenger(passengerUnit);
+        passengerUnit->m_movementInfo.RemoveMovementFlag(MOVEFLAG_ONTRANSPORT);
+        // if their own position is garbage too, drop them at the transport itself
+        if (!MaNGOS::IsValidMapCoord(passenger->GetPositionX(), passenger->GetPositionY(), passenger->GetPositionZ()))
+        {
+            if (!passenger->IsInWorld())
+                passenger->Relocate(GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation());
+            else if (passenger->GetTypeId() == TYPEID_PLAYER)
+                GetMap()->PlayerRelocation(static_cast<Player*>(passenger), GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation());
+            else
+                GetMap()->CreatureRelocation(static_cast<Creature*>(passenger), GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation());
+        }
         return;
     }
     switch (passenger->GetTypeId())

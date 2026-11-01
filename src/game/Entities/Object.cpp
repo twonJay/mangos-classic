@@ -1648,9 +1648,17 @@ void WorldObject::UpdateAllowedPositionZ(float x, float y, float& z, Map* atMap 
 
 void WorldObject::MovePositionToFirstCollision(Position& pos, float dist, float angle)
 {
+    // a corrupted caster position (e.g. broken transport offsets) underflows the
+    // grid indexing inside the height/LoS queries below - keep pos untouched
+    if (!MaNGOS::IsValidMapCoord(pos.x, pos.y, pos.z))
+        return;
+
     float destX = pos.x + dist * cos(angle);
     float destY = pos.y + dist * sin(angle);
     float destZ = pos.z;
+
+    if (!MaNGOS::IsValidMapCoord(destX, destY, destZ))
+        return;
 
     GenericTransport* transport = GetTransport();
 

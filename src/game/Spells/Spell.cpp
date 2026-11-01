@@ -6389,8 +6389,11 @@ uint32 Spell::CalculatePowerCost(SpellEntry const* spellInfo, Unit* caster, Spel
 
 SpellCastResult Spell::CheckPower(bool strict)
 {
-    // item or GO cast does not use power
-    if (m_CastItem || !m_caster)
+    // item or GO cast does not use power; neither does a channel-only cast
+    // (summoning ritual participation anim) - it executes no effects and must
+    // work for classes without the spell's power type (leaves m_powerCost at 0
+    // so TakePower() deducts nothing)
+    if (m_CastItem || !m_caster || m_channelOnly)
         return SPELL_CAST_OK;
 
     m_powerCost = CalculatePowerCost(m_spellInfo, m_caster, this, m_CastItem, !strict);
