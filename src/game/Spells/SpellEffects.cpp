@@ -4804,8 +4804,33 @@ void Spell::EffectResurrect(SpellEffectIndex eff_idx)
 
     if (unitTarget) // thread safe version
     {
-        if (unitTarget->IsAlive() || unitTarget->GetTypeId() != TYPEID_PLAYER || !unitTarget->IsInWorld())
+        if (unitTarget->IsAlive() || !unitTarget->IsInWorld())
             return;
+
+        // Classic allows player resurrection spells to revive a hunter's dead
+        // pet. A pet has no client to accept the request with, so revive it
+        // on the spot (mirrors EffectSummonDeadPet)
+        if (unitTarget->GetTypeId() == TYPEID_UNIT)
+        {
+            if (!static_cast<Creature*>(unitTarget)->IsPet())
+                return;
+
+            Pet* pet = static_cast<Pet*>(unitTarget);
+            uint32 health = effectId == SPELL_EFFECT_RESURRECT_NEW ? uint32(damage) : pet->GetMaxHealth() * damage / 100;
+
+            pet->SetUInt32Value(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_NONE);
+            pet->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE);
+            pet->SetDeathState(ALIVE);
+            pet->clearUnitState(static_cast<uint32>(UNIT_STAT_ALL_STATE));
+            pet->SetHealth(std::max(1u, health));
+
+            if (Unit* owner = pet->GetOwner())
+                if (owner->GetTypeId() == TYPEID_PLAYER)
+                    pet->SavePetToDB(PET_SAVE_AS_CURRENT, static_cast<Player*>(owner));
+
+            m_spellLog.AddLog(uint32(effectId), pet->GetObjectGuid());
+            return;
+        }
 
         player = static_cast<Player*>(unitTarget);
     }
