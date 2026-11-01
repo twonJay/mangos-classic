@@ -33,10 +33,26 @@
 
 INSTANTIATE_SINGLETON_1(GameEventMgr);
 
+namespace
+{
+    // Elapsed seconds since the event anchor, adjusted so a wall-clock anchor
+    // keeps its local start hour across DST changes: occurrence arithmetic is
+    // pure epoch math, so without this a weekly 2pm event anchored in summer
+    // fires at 1pm all winter (and vice versa).
+    time_t DstStableElapsed(time_t start, time_t now)
+    {
+        struct tm tmStart, tmNow;
+        localtime_r(&start, &tmStart);
+        localtime_r(&now, &tmNow);
+        time_t elapsed = (now - start) + (tmNow.tm_gmtoff - tmStart.tm_gmtoff);
+        return elapsed < 0 ? 0 : elapsed;
+    }
+}
+
 bool GameEventMgr::CheckOneGameEvent(uint16 entry, time_t currenttime) const
 {
     // Get the event information
-    return m_gameEvents[entry].start < currenttime && currenttime < m_gameEvents[entry].end && ((currenttime - m_gameEvents[entry].start) % (m_gameEvents[entry].occurence * MINUTE)) < (m_gameEvents[entry].length * MINUTE);
+    return m_gameEvents[entry].start < currenttime && currenttime < m_gameEvents[entry].end && (DstStableElapsed(m_gameEvents[entry].start, currenttime) % (m_gameEvents[entry].occurence * MINUTE)) < (m_gameEvents[entry].length * MINUTE);
 }
 
 uint32 GameEventMgr::NextCheck(uint16 entry) const
@@ -52,12 +68,13 @@ uint32 GameEventMgr::NextCheck(uint16 entry) const
         return uint32(m_gameEvents[entry].start - currenttime);
 
     uint32 delay;
+    const time_t elapsed = DstStableElapsed(m_gameEvents[entry].start, currenttime);
     // in event, we return the end of it
-    if ((((currenttime - m_gameEvents[entry].start) % (m_gameEvents[entry].occurence * 60)) < (m_gameEvents[entry].length * 60)))
+    if (((elapsed % (m_gameEvents[entry].occurence * 60)) < (m_gameEvents[entry].length * 60)))
         // we return the delay before it ends
-        delay = (m_gameEvents[entry].length * MINUTE) - ((currenttime - m_gameEvents[entry].start) % (m_gameEvents[entry].occurence * MINUTE));
+        delay = (m_gameEvents[entry].length * MINUTE) - (elapsed % (m_gameEvents[entry].occurence * MINUTE));
     else                                                    // not in window, we return the delay before next start
-        delay = (m_gameEvents[entry].occurence * MINUTE) - ((currenttime - m_gameEvents[entry].start) % (m_gameEvents[entry].occurence * MINUTE));
+        delay = (m_gameEvents[entry].occurence * MINUTE) - (elapsed % (m_gameEvents[entry].occurence * MINUTE));
     // In case the end is before next check
     if (m_gameEvents[entry].end  < time_t(currenttime + delay))
         return uint32(m_gameEvents[entry].end - currenttime);
