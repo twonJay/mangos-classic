@@ -169,6 +169,15 @@ class PoolManager
         template<typename T>
         void UpdatePool(MapPersistentState& mapState, uint16 pool_id, uint32 db_guid_or_pool_id = 0);
 
+        // For callers that schedule respawns themselves (NodeCompetitionMgr): take
+        // one spawned member (gameobject guid or child pool id) out of a pool
+        // without rolling a replacement, and later put back exactly one member.
+        // SpawnPool always tops a pool up to its limit in one go.
+        template<typename T>
+        void DespawnOneFromPool(MapPersistentState& mapState, uint16 pool_id, uint32 db_guid_or_pool_id);
+        template<typename T>
+        void SpawnOneInPool(MapPersistentState& mapState, uint16 pool_id, bool instantly);
+
         // used for calling from global systems when need spawn pool in all appropriate map instances
         void SpawnPoolInMaps(uint16 pool_id, bool instantly);
         void DespawnPoolInMaps(uint16 pool_id);

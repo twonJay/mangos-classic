@@ -485,6 +485,20 @@ void PoolGroup<GameObject>::Spawn1Object(MapPersistentState& mapState, PoolObjec
         {
             GameObjectData const* data = sObjectMgr.GetGOData(obj->guid);
             MANGOS_ASSERT(data);
+
+            // A replacement for a just despawned member must enter the map already
+            // waiting on its timer. LoadFromDB adds the object with whatever respawn
+            // time the persistent state holds; setting the timer only afterwards let
+            // Map::Add send the object to nearby clients as spawned, and the next
+            // visibility pass removed it again - every gathered node made other
+            // members of its pool flash into view for a moment.
+            // (only possible while respawn times are persisted immediately: the
+            // in-memory setter is private to the persistent state; otherwise the old
+            // order stands)
+            uint32 const respawnDelay = instantly ? 0 : data->GetRandomRespawnTime();
+            if (!instantly && sWorld.getConfig(CONFIG_BOOL_SAVE_RESPAWN_TIME_IMMEDIATELY))
+                mapState.SaveGORespawnTime(obj->guid, time(nullptr) + respawnDelay);
+
             GameObject* pGameobject = GameObject::CreateGameObject(data->id);
             if (!pGameobject->LoadFromDB(obj->guid, dataMap, obj->guid, 0))
                 delete pGameobject;
@@ -492,11 +506,7 @@ void PoolGroup<GameObject>::Spawn1Object(MapPersistentState& mapState, PoolObjec
             {
                 // if new spawn replaces a just despawned object, not instantly spawn but set respawn timer
                 if (!instantly)
-                {
-                    pGameobject->SetRespawnTime(data->GetRandomRespawnTime());
-                    if (sWorld.getConfig(CONFIG_BOOL_SAVE_RESPAWN_TIME_IMMEDIATELY))
-                        pGameobject->SaveRespawnTime();
-                }
+                    pGameobject->SetRespawnTime(respawnDelay);
             }
         }
         // for not loaded grid just update respawn time (avoid work for instances until implemented support)
@@ -1144,6 +1154,34 @@ void PoolManager::UpdatePool(MapPersistentState& mapState, uint16 pool_id, uint3
         SpawnPoolGroup<Pool>(mapState, motherpoolid, pool_id, false);
     else
         SpawnPoolGroup<T>(mapState, pool_id, db_guid_or_pool_id, false);
+}
+
+template<>
+void PoolManager::DespawnOneFromPool<GameObject>(MapPersistentState& mapState, uint16 pool_id, uint32 db_guid)
+{
+    mPoolGameobjectGroups[pool_id].DespawnObject(mapState, db_guid);
+}
+
+template<>
+void PoolManager::DespawnOneFromPool<Pool>(MapPersistentState& mapState, uint16 pool_id, uint32 child_pool_id)
+{
+    mPoolPoolGroups[pool_id].DespawnObject(mapState, child_pool_id);
+}
+
+template<>
+void PoolManager::SpawnOneInPool<GameObject>(MapPersistentState& mapState, uint16 pool_id, bool instantly)
+{
+    uint32 const limit = std::min(mapState.GetSpawnedPoolData().GetSpawnedObjects(pool_id) + 1, mPoolTemplate[pool_id].MaxLimit);
+    if (!mPoolGameobjectGroups[pool_id].isEmpty())
+        mPoolGameobjectGroups[pool_id].SpawnObject(mapState, limit, 0, instantly);
+}
+
+template<>
+void PoolManager::SpawnOneInPool<Pool>(MapPersistentState& mapState, uint16 pool_id, bool instantly)
+{
+    uint32 const limit = std::min(mapState.GetSpawnedPoolData().GetSpawnedObjects(pool_id) + 1, mPoolTemplate[pool_id].MaxLimit);
+    if (!mPoolPoolGroups[pool_id].isEmpty())
+        mPoolPoolGroups[pool_id].SpawnObject(mapState, limit, 0, instantly);
 }
 
 template void PoolManager::UpdatePool<Pool>(MapPersistentState& mapState, uint16 pool_id, uint32 db_guid_or_pool_id);
