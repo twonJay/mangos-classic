@@ -1235,6 +1235,18 @@ void WorldSession::SynchronizeMovement(MovementInfo& movementInfo)
 {
     if (m_clientTimeDelay == 0)
         m_clientTimeDelay = WorldTimer::getMSTime() - movementInfo.ctime;
+
+    // The offset above is measured once, from the session's first movement
+    // packet, and never refreshed - a scheme from TrinityCore 3.3.5, whose client
+    // keeps its clock synced to the server. The 1.12 client has no time sync, so
+    // optionally stamp the relayed packet with the server clock at receipt
+    // instead (vmangos does this). Under test for /follow tracking poorly.
+    if (sWorld.getConfig(CONFIG_BOOL_MOVEMENT_STAMP_AT_RECEIPT))
+    {
+        movementInfo.stime = WorldTimer::getMSTime();
+        return;
+    }
+
     movementInfo.stime = movementInfo.ctime + m_clientTimeDelay + MOVEMENT_PACKET_TIME_DELAY;
 }
 

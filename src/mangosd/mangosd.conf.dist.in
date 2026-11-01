@@ -202,6 +202,15 @@ Spawns.ZoneArea = 0
 #        Default: 1 (enable)
 #                 0 (disable)
 #
+#    Movement.StampAtReceipt
+#        Timestamp relayed player movement with the server clock at the moment
+#        each packet arrives, instead of the client's own time shifted by an
+#        offset measured once from the session's first movement packet (a
+#        TrinityCore 3.3.5 scheme that assumes client/server time sync, which
+#        the 1.12 client does not have). Matches vmangos. Reloadable.
+#        Default: 0 (client time + fixed offset)
+#                 1 (server receipt time)
+#
 #    mmap.ignoreMapIds
 #        Disable mmap pathfinding on the listed maps.
 #        List of map ids with delimiter ','
@@ -274,6 +283,7 @@ vmap.enableIndoorCheck = 1
 DetectPosCollision = 1
 mmap.enabled = 1
 mmap.swimShortcut = 1
+Movement.StampAtReceipt = 0
 mmap.ignoreMapIds = ""
 mmap.preload = 0
 PathFinder.OptimizePath = 1
@@ -1798,3 +1808,58 @@ Metric.Password = ""
 
 Dummy.Debug1 = 0
 Dummy.Debug2 = 0
+
+###################################################################################################
+# FISHING EXTRAVAGANZA DERBY (custom)
+#
+#    FishingDerby.Enable
+#        Simulate rival anglers racing for the Master Angler title during the
+#        Stranglethorn Fishing Extravaganza. If a rival lands 40 Tastyfish
+#        first, the Master Angler turn-in locks for the week (consolation
+#        turn-ins stay open).
+#        Default: 1 (enable)
+#                 0 (disable - no winner lock at all)
+#
+#    FishingDerby.Rivals
+#        Number of simulated competitors.
+#        Default: 6
+#
+#    FishingDerby.WinnerPaceMinMinutes / FishingDerby.WinnerPaceMaxMinutes
+#        The winning rival finishes 40 fish after a random time in this window.
+#        Default: 18 / 30
+#
+#    FishingDerby.ChatterIntervalSeconds
+#        How often standings are announced in Stranglethorn / Booty Bay.
+#        Default: 240
+#
+#    FishingDerby.Anglers
+#        Visible rival angler NPCs placed on the shoreline near Tastyfish pools.
+#        Default: 10
+#
+#    FishingDerby.AnglerCatchMinSeconds / FishingDerby.AnglerCatchMaxSeconds
+#        A visible angler takes a catch from its school this often; the school
+#        despawns after its normal 3-5 catches and the angler moves to another.
+#        Default: 15 / 30
+#
+#    FishingDerby.MinActivePools
+#        Minimum Tastyfish schools up at any moment during the fishing window;
+#        below this a random fished-out school respawns immediately.
+#        Default: 25
+#
+#    FishingDerby.PoolDrainRate
+#        Fraction of the rivals' modeled catch rate applied to real Tastyfish
+#        schools (they get fished out as if the coast were crowded). 0 disables.
+#        Default: 0.35
+#
+###################################################################################################
+
+FishingDerby.Enable = 1
+FishingDerby.Rivals = 6
+FishingDerby.WinnerPaceMinMinutes = 18
+FishingDerby.WinnerPaceMaxMinutes = 30
+FishingDerby.ChatterIntervalSeconds = 240
+FishingDerby.Anglers = 10
+FishingDerby.AnglerCatchMinSeconds = 15
+FishingDerby.AnglerCatchMaxSeconds = 30
+FishingDerby.MinActivePools = 25
+FishingDerby.PoolDrainRate = 0.35
