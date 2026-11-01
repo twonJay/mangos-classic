@@ -419,7 +419,7 @@ void PathFinder::BuildPolyPath(const Vector3& startPos, const Vector3& endPos)
         BuildShortcut();
         // a destination bobbing above the surface (charge aims 1y high) is pulled onto it
         GridMapLiquidData liquid;
-        if (m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z, 1.5f, &liquid) && m_pathPoints[1].z > liquid.level)
+        if (m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z, m_sourceUnit->GetCollisionHeight(), &liquid) && m_pathPoints[1].z > liquid.level)
             m_pathPoints[1].z = liquid.level;
         m_type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
         return;
@@ -449,7 +449,15 @@ void PathFinder::BuildPolyPath(const Vector3& startPos, const Vector3& endPos)
             // Check for swimming or flying shortcut
             if ((startPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(startPos.x, startPos.y, startPos.z)) ||
                 (endPoly == INVALID_POLYREF && m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z)))
-                m_type = m_sourceUnit->CanSwim() ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
+            {
+                bool allowed = m_sourceUnit->CanSwim();
+                // a water-locked creature (fish) may not take the straight
+                // line onto dry land after a target standing ashore
+                if (allowed && m_sourceUnit->GetTypeId() == TYPEID_UNIT && !static_cast<Creature const*>(m_sourceUnit)->CanWalk() &&
+                    !m_sourceUnit->GetTerrain()->IsSwimmable(endPos.x, endPos.y, endPos.z))
+                    allowed = false;
+                m_type = allowed ? PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH) : PATHFIND_NOPATH;
+            }
             else
             {
                 if (m_sourceUnit->GetTypeId() != TYPEID_PLAYER)
@@ -1028,6 +1036,16 @@ bool PathFinder::CanUseSwimShortcut(const Vector3& startPos, const Vector3& endP
     if (!m_sourceUnit || !m_sourceUnit->CanSwim() || m_sourceUnit->GetTransport())
         return false;
 
+    // bottom-walkers (crabs, sea giants) keep to the floor and path on the mesh;
+    // they only swim up when the destination hangs too far above it to be
+    // reached by walking (a target swimming overhead)
+    if (m_sourceUnit->GetTypeId() == TYPEID_UNIT && static_cast<Creature const*>(m_sourceUnit)->IsForcedToWalkInWater())
+    {
+        float const endGround = m_sourceUnit->GetMap()->GetHeight(endPos.x, endPos.y, endPos.z);
+        if (endGround <= INVALID_HEIGHT || endPos.z - endGround < 3.0f)
+            return false;
+    }
+
     // combat-scale moves only; long travel keeps using the mesh
     const float dx = endPos.x - startPos.x;
     const float dy = endPos.y - startPos.y;
@@ -1036,14 +1054,19 @@ bool PathFinder::CanUseSwimShortcut(const Vector3& startPos, const Vector3& endP
     if (dist2dSq + dz * dz > 75.f * 75.f)
         return false;
 
-    // one endpoint must be inside swim-depth water; the z check keeps a target
-    // standing on a dock or bridge above the water from triggering a swim
+    // the destination must be in water too deep for this unit to wade through
+    // (same collision-height test the swim state uses - anything it can wade,
+    // it keeps walking on the mesh). Requiring the DESTINATION - not just any
+    // endpoint - keeps the straight line from ever ending on dry land: a
+    // water-locked fish chasing a player on the beach must not shortcut out of
+    // the water (the mesh filter already denies it ground polys), and an
+    // amphibious mob heading ashore paths fine on the mesh. The z check keeps
+    // a target standing on a dock or bridge above the water from triggering a
+    // swim
+    float const wadeDepth = m_sourceUnit->GetCollisionHeight();
     TerrainInfo const* terrain = m_sourceUnit->GetTerrain();
     GridMapLiquidData liquid;
-    bool inWater = terrain->IsSwimmable(startPos.x, startPos.y, startPos.z, 1.5f, &liquid) && startPos.z < liquid.level + 3.f;
-    if (!inWater)
-        inWater = terrain->IsSwimmable(endPos.x, endPos.y, endPos.z, 1.5f, &liquid) && endPos.z < liquid.level + 3.f;
-    if (!inWater)
+    if (!terrain->IsSwimmable(endPos.x, endPos.y, endPos.z, wadeDepth, &liquid) || endPos.z >= liquid.level + 3.f)
         return false;
 
     // the straight segment must be clear of static geometry (walls, docks, boats)
@@ -1063,6 +1086,41 @@ bool PathFinder::CanUseSwimShortcut(const Vector3& startPos, const Vector3& endP
     }
 
     return true;
+}
+
+// Hold a point inside the water column for a creature that lives in the water and
+// cannot leave it (fish schools, threshers, frenzies - InhabitType 2). The navmesh
+// has a walkable poly layer at the liquid surface, and such a creature's filter
+// matches that layer alone, so every poly snap drags it up to the waterline where
+// it floats half out of the sea. Amphibious swimmers are deliberately left alone:
+// they carry NAV_GROUND too and are meant to use the sea floor.
+void PathFinder::ClampToWaterColumn(float preferredZ, Vector3& point) const
+{
+    if (!m_sourceUnit || m_sourceUnit->GetTypeId() != TYPEID_UNIT)
+        return;
+
+    Creature const* creature = static_cast<Creature const*>(m_sourceUnit);
+    if (!creature->CanSwim() || creature->CanWalk() || creature->CanFly())
+        return;
+
+    // probe with the point's own z: it is the surface-snapped height, so it is
+    // inside the liquid whenever there is any, which the preferred depth may not
+    // be (it can sit below the sea bed of the destination column)
+    GridMapLiquidData liquid;
+    if (!m_sourceUnit->GetTerrain()->IsSwimmable(point.x, point.y, point.z, 0.f, &liquid))
+        return;
+
+    float const seaBed = liquid.depth_level;
+    float const ceiling = liquid.level - m_sourceUnit->GetCollisionHeight();
+    if (ceiling <= seaBed)  // too shallow to stay submerged; leave the snap alone
+        return;
+
+    if (preferredZ > ceiling)
+        point.z = ceiling;
+    else if (preferredZ < seaBed)
+        point.z = seaBed;
+    else
+        point.z = preferredZ;
 }
 
 void PathFinder::BuildShortcut()
@@ -1468,6 +1526,15 @@ void PathFinder::ComputePathToRandomPoint(Vector3 const& startPoint, float maxRa
         // first we have to fix z value before hit test, z is in index 1 of randomPoint
         dtStatus dtResult = m_navMeshQuery->getPolyHeight(centerPoly, randomPoint, &randomPoint[1]);
         endPoint.z = randomPoint[1];
+
+        // ...but that snap parks water-locked creatures on the waterline: the
+        // navmesh carries a walkable poly layer at the liquid surface, and their
+        // filter matches only that layer (createFilter gives them NAV_WATER and
+        // no NAV_GROUND), so the sea floor is invisible to the poly search and
+        // the surface is the one height they can ever snap to. Hold the
+        // destination at the creature's own depth inside the water column.
+        ClampToWaterColumn(startPoint.z, endPoint);
+
         setEndPosition(endPoint);
 
         if (dtResult == DT_SUCCESS)
@@ -1475,6 +1542,13 @@ void PathFinder::ComputePathToRandomPoint(Vector3 const& startPoint, float maxRa
             // generate path
             BuildPolyPath(currPos, endPoint);
             fail = false;
+
+            // a mesh path runs poly to poly, i.e. along that same surface layer,
+            // so keep the waypoints down in the column as well (index 0 is the
+            // creature's current position and is left alone - moving it would
+            // start the spline away from where the client has the creature)
+            for (size_t i = 1; i < m_pathPoints.size(); ++i)
+                ClampToWaterColumn(m_pathPoints[i].z, m_pathPoints[i]);
             //sLog.outDebug("PathFinder::GetPathToRandomPoint> path type %d size %d poly-size %d\n", m_type, m_pathPoints.size(), m_polyLength);
         }
     }

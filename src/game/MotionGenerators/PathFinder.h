@@ -161,6 +161,7 @@ class PathFinder
         void BuildPointPath(const float* startPoint, const float* endPoint);
         void BuildShortcut();
         bool CanUseSwimShortcut(const Vector3& startPos, const Vector3& endPos) const;
+        void ClampToWaterColumn(float preferredZ, Vector3& point) const;
 #ifdef ENABLE_PLAYERBOTS
         bool IsPointHigherThan(const Vector3& posOne, const Vector3& posTwo);
 #endif

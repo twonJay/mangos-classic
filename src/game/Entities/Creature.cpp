@@ -772,6 +772,8 @@ void Creature::Update(const uint32 diff)
             if (!IsAlive())
                 break;
 
+            UpdateSwimmingState();
+
             // Creature can be dead after unit update
             if (IsAlive())
                 RegenerateAll(diff);
@@ -781,6 +783,66 @@ void Creature::Update(const uint32 diff)
         default:
             break;
     }
+}
+
+void Creature::UpdateSwimmingState()
+{
+    // The swim flags are seeded once at creation from the spawn point, so a land
+    // spawn that chased into the water used to run (and bob) along the surface
+    // with no swim animation - the client only swims after MOVEFLAG_SWIMMING /
+    // SMSG_SPLINE_MOVE_START_SWIM. Recompute from position after real movement.
+    if (!CanSwim() || CanFly() || GetTransport())
+        return;
+
+    float const x = GetPositionX();
+    float const y = GetPositionY();
+    float const z = GetPositionZ();
+    if (fabs(x - m_lastSwimStatePos.x) < 0.5f && fabs(y - m_lastSwimStatePos.y) < 0.5f && fabs(z - m_lastSwimStatePos.z) < 0.5f)
+        return;
+    m_lastSwimStatePos.x = x;
+    m_lastSwimStatePos.y = y;
+    m_lastSwimStatePos.z = z;
+
+    // IsSwimmable would also match a mob standing on a dock or bridge above the
+    // water (ABOVE_WATER still counts as liquid there), so test the status
+    // directly. Swim when actually in the liquid AND either the column is too
+    // deep for this model to wade (collision height - a kodo wades where a
+    // player swims) or the mob is already off the floor (a path segment
+    // crossing a wade-depth shelf must not fall back to walking mid-water).
+    // Bottom-walkers (crabs, sea giants) never swim from depth alone - only
+    // when hanging above the floor chasing a swimming target.
+    // Hysteresis: both tests below are thresholds, and a creature moving through
+    // water that is about that deep crosses them over and over - every flip sends
+    // START/STOP_SWIM and the client visibly bounces the model between the surface
+    // and the bed (seen on Rotgrip, a 3x-scaled crocolisk whose threshold is ~2y,
+    // patrolling a shallow stretch). Widen the band required to LEAVE the current
+    // state so a borderline depth settles instead of oscillating; entering the
+    // water is unchanged.
+    // The band is a fraction of the creature's own threshold rather than a
+    // constant, because the threshold is the collision height and that scales with
+    // the model: a flat margin is a quarter of the band for a typical creature
+    // (median collision height 2.08) but only a twelfth for a 3x-scaled crocolisk
+    // like Rotgrip at 6.25, and several times the whole threshold for the smallest
+    // models at 0.28. A straight quarter keeps every size in the same proportion.
+    bool const swimming = IsSwimming();
+    float const exitMargin = swimming ? GetCollisionHeight() * 0.25f : 0.f;
+
+    bool shouldSwim = false;
+    GridMapLiquidData liquid;
+    GridMapLiquidStatus const status = GetTerrain()->getLiquidStatus(x, y, z, MAP_ALL_LIQUIDS, &liquid, GetCollisionHeight());
+    if (status & (LIQUID_MAP_WATER_WALK | LIQUID_MAP_IN_WATER | LIQUID_MAP_UNDER_WATER))
+    {
+        float const ground = GetMap()->GetHeight(x, y, z);
+        bool const offFloor = ground > INVALID_HEIGHT && z - ground > (IsForcedToWalkInWater() ? 2.0f : 1.5f) - exitMargin;
+        shouldSwim = offFloor || (!IsForcedToWalkInWater() && liquid.level - liquid.depth_level > GetCollisionHeight() - exitMargin);
+    }
+
+    if (shouldSwim == swimming)
+        return;
+
+    SetSwim(shouldSwim);
+    if (shouldSwim) // sniffs suggest this one is never removed once gained (see 0dad73e9a)
+        SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SWIMMING);
 }
 
 void Creature::RegenerateAll(uint32 diff)
