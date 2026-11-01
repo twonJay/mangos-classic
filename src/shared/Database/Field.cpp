@@ -27,5 +27,9 @@ time_t Field::GetTime() const
     std::tm tm = {};
     std::stringstream ss(time);
     ss >> std::get_time(&tm, "%Y-%m-%d %H:%M:%S");
+    // let mktime infer DST for the parsed date: with the zero-initialized
+    // tm_isdst = 0 a summer datetime was treated as standard time, shifting
+    // every date-scheduled game event one hour late while DST is in effect
+    tm.tm_isdst = -1;
     return std::mktime(&tm);
 }
