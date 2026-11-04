@@ -1,9 +1,9 @@
 name: Windows Release Build
 
 on:
-  schedule:
-    # every day at 6am
-    - cron:  '0 6 * * *'
+  # Fork: no nightly release builds; run by hand from the Actions tab when a
+  # Windows release zip is actually wanted. Upstream runs this daily at 6am.
+  workflow_dispatch:
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
