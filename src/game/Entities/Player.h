@@ -2186,8 +2186,10 @@ class Player : public Unit
         void RemovePlayerbotMgr();
         PlayerbotMgr* GetPlayerbotMgr() const { return m_playerbotMgr.get(); }
         void SetBotDeathTimer() { m_deathTimer = 0; }
-        bool isRealPlayer() const { return m_session && (m_session->GetRemoteAddress() != "disconnected/bot"); }
 #endif
+        // True for a player driven by a real client. Bot sessions (PlayerBots module) carry the
+        // address "disconnected/bot"; without the module every session is a real one.
+        bool isRealPlayer() const { return m_session && (m_session->GetRemoteAddress() != "disconnected/bot"); }
 
         void SendLootError(ObjectGuid guid, LootError error) const;
 

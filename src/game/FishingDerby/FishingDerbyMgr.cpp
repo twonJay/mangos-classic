@@ -360,7 +360,7 @@ void FishingDerbyMgr::AnnounceToZones(const std::string& text) const
         Player* player = ref.getSource();
         if (!player || !player->IsInWorld())
             continue;
-        if (player->GetPlayerbotAI())
+        if (!player->isRealPlayer())
             continue;
         const uint32 zone = player->GetZoneId();
         if (zone == ZONE_STRANGLETHORN || zone == ZONE_BOOTY_BAY)

@@ -113,7 +113,7 @@ int ArenaBrawlMgr::CountRealPlayersNear(float radius) const
         Player* p = ref.getSource();
         if (!p || !p->IsInWorld())
             continue;
-        if (p->GetPlayerbotAI())            // bots are not "real" players
+        if (!p->isRealPlayer())             // bots are not "real" players
             continue;
         if (!p->IsAlive())                  // a corpse/ghost does not hold the chest
             continue;
