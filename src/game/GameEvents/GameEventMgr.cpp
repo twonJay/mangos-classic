@@ -39,12 +39,29 @@ namespace
     // keeps its local start hour across DST changes: occurrence arithmetic is
     // pure epoch math, so without this a weekly 2pm event anchored in summer
     // fires at 1pm all winter (and vice versa).
+    // Local UTC offset in seconds at the given instant, derived from the local
+    // and UTC calendar fields so it works without the POSIX-only tm_gmtoff.
+    time_t UtcOffsetAt(time_t t)
+    {
+        struct tm local, utc;
+#ifdef _WIN32
+        localtime_s(&local, &t);
+        gmtime_s(&utc, &t);
+#else
+        localtime_r(&t, &local);
+        gmtime_r(&t, &utc);
+#endif
+        int dayDiff = local.tm_yday - utc.tm_yday;
+        if (dayDiff > 1)        // year wrapped: local is still Dec 31, UTC already Jan 1
+            dayDiff = -1;
+        else if (dayDiff < -1)
+            dayDiff = 1;
+        return time_t(dayDiff) * DAY + (local.tm_hour - utc.tm_hour) * HOUR + (local.tm_min - utc.tm_min) * MINUTE + (local.tm_sec - utc.tm_sec);
+    }
+
     time_t DstStableElapsed(time_t start, time_t now)
     {
-        struct tm tmStart, tmNow;
-        localtime_r(&start, &tmStart);
-        localtime_r(&now, &tmNow);
-        time_t elapsed = (now - start) + (tmNow.tm_gmtoff - tmStart.tm_gmtoff);
+        time_t elapsed = (now - start) + (UtcOffsetAt(now) - UtcOffsetAt(start));
         return elapsed < 0 ? 0 : elapsed;
     }
 }
