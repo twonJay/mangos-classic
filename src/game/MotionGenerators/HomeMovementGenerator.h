@@ -20,6 +20,7 @@
 #define MANGOS_HOMEMOVEMENTGENERATOR_H
 
 #include "MovementGenerator.h"
+#include "Entities/Object.h"
 
 class Creature;
 
@@ -50,5 +51,7 @@ class HomeMovementGenerator<Creature>
         bool arrived;
         bool runHome;
         bool wasActive;
+        Position m_home;        // return point, resolved once in Initialize()
+        Position m_legStart;    // where the current leg was launched from
 };
 #endif

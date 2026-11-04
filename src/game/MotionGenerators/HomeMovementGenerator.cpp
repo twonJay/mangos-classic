@@ -30,6 +30,17 @@ void HomeMovementGenerator<Creature>::Initialize(Creature& owner)
         owner.SetActiveObjectState(true);
     owner.GetCombatManager().SetEvadeState(EVADE_HOME);
 
+    // Resolve the return point once, here: MotionMaster::Mutate() runs Initialize()
+    // BEFORE pushing this generator, so top() is still the generator being returned
+    // to (waypoint path, formation, follow) and its reset position is the real home.
+    // Once this generator is on top the same lookup fails and falls back to the
+    // combat start or spawn point, which is not where an escort or patrol resumes.
+    if (owner.GetMotionMaster()->empty() || !owner.GetMotionMaster()->top()->GetResetPosition(owner, m_home.x, m_home.y, m_home.z, m_home.o))
+        owner.GetCombatStartPosition(m_home);
+
+    if (m_home.IsEmpty())
+        owner.GetRespawnCoord(m_home.x, m_home.y, m_home.z, &m_home.o);
+
     _setTargetLocation(owner);
 }
 
@@ -42,13 +53,7 @@ void HomeMovementGenerator<Creature>::_setTargetLocation(Creature& owner)
     if (owner.hasUnitState(UNIT_STAT_NOT_MOVE))
         return;
 
-    Position pos;
-    // at apply we can select more nice return points base at current movegen
-    if (owner.GetMotionMaster()->empty() || !owner.GetMotionMaster()->top()->GetResetPosition(owner, pos.x, pos.y, pos.z, pos.o))
-        owner.GetCombatStartPosition(pos);
-
-    if (pos.IsEmpty())
-        owner.GetRespawnCoord(pos.x, pos.y, pos.z, &pos.o);
+    Position const& pos = m_home;
     // No distance cap: creatures kited any distance run all the way home like on
     // classic (the old >150y despawn+respawn looked like a vanish to players).
     // Returns longer than one spline's point budget are handled by Update(),
@@ -57,6 +62,7 @@ void HomeMovementGenerator<Creature>::_setTargetLocation(Creature& owner)
     PathFinder path(&owner);
 
     Position curPos = owner.GetPosition(owner.GetTransport());
+    m_legStart = curPos;
     // source and target pos must be local coords
     path.calculate(G3D::Vector3(curPos.GetPositionX(), curPos.GetPositionY(), curPos.GetPositionZ()), G3D::Vector3(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ()), true);
 
@@ -79,14 +85,15 @@ bool HomeMovementGenerator<Creature>::Update(Creature& owner, const uint32& /*ti
         // A long return home exceeds a single spline's point budget and ends
         // mid-route: if the creature is not standing at its return point yet,
         // launch the next leg instead of declaring arrival.
+        // Only while the last leg actually moved the creature: a leg that ended where
+        // it started means the point cannot be reached from here, and relaunching
+        // would freeze the creature in EVADE_HOME forever (immune, never resuming).
         if (!owner.hasUnitState(UNIT_STAT_NOT_MOVE))
         {
-            Position pos;
-            if (owner.GetMotionMaster()->empty() || !owner.GetMotionMaster()->top()->GetResetPosition(owner, pos.x, pos.y, pos.z, pos.o))
-                owner.GetCombatStartPosition(pos);
-            if (pos.IsEmpty())
-                owner.GetRespawnCoord(pos.x, pos.y, pos.z, &pos.o);
-            if (owner.GetDistance(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(), DIST_CALC_NONE, owner.GetTransport()) > 25.f)
+            Position const cur = owner.GetPosition(owner.GetTransport());
+            bool const progressed = cur.GetDistance(m_legStart) > 1.f;                      // squared: > 1y
+            bool const farFromHome = owner.GetDistance(m_home.x, m_home.y, m_home.z, DIST_CALC_NONE, owner.GetTransport()) > 5.f * 5.f; // squared: > 5y
+            if (progressed && farFromHome)
             {
                 _setTargetLocation(owner);
                 return true;
