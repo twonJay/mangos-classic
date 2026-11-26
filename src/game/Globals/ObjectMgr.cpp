@@ -2040,8 +2040,13 @@ void ObjectMgr::LoadCreatures()
         {
             AddCreatureToGrid(guid, &data);
 
-            if (sWorld.getConfig(CONFIG_BOOL_AUTOLOAD_ACTIVE) && cInfo && cInfo->ExtraFlags & CREATURE_EXTRA_FLAG_ACTIVE)
-                m_activeCreatures.emplace(data.mapid, guid);
+            if (sWorld.getConfig(CONFIG_BOOL_AUTOLOAD_ACTIVE))
+            {
+                bool const activeTemplate = cInfo && (cInfo->ExtraFlags & CREATURE_EXTRA_FLAG_ACTIVE);
+                bool const activeSpawn = data.spawnTemplate && data.spawnTemplate->IsActive();
+                if (activeTemplate || activeSpawn)
+                    m_activeCreatures.emplace(data.mapid, guid);
+            }
         }
 
         // reset the entry to 0; this will be processed by Creature::GetCreatureConditionalSpawnEntry

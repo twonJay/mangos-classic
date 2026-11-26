@@ -202,11 +202,22 @@ void Creature::AddToWorld()
     Unit::AddToWorld();
 
     // Make active if required
-    if (sWorld.isForceLoadMap(GetMapId()) || (GetCreatureInfo()->ExtraFlags & CREATURE_EXTRA_FLAG_ACTIVE))
+    if (sWorld.isForceLoadMap(GetMapId()) || (GetCreatureInfo()->ExtraFlags & CREATURE_EXTRA_FLAG_ACTIVE) || IsActiveSpawn())
         SetActiveObjectState(true);
 
     if (m_countSpawns)
         GetMap()->AddToSpawnCount(GetObjectGuid());
+}
+
+// Per-spawn counterpart of CREATURE_EXTRA_FLAG_ACTIVE: long patrols flagged through
+// creature_spawn_data keep walking (and their surroundings keep updating) with no player nearby.
+bool Creature::IsActiveSpawn() const
+{
+    if (!GetDbGuid())
+        return false;
+
+    CreatureData const* data = sObjectMgr.GetCreatureData(GetDbGuid());
+    return data && data->spawnTemplate && data->spawnTemplate->IsActive();
 }
 
 void Creature::RemoveFromWorld()

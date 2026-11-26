@@ -267,6 +267,7 @@ enum SpawnFlags
     SPAWN_FLAG_RUN_ON_SPAWN     = 0x01,
     SPAWN_FLAG_HOVER            = 0x02,
     SPAWN_FLAG_DISABLE_GRAVITY  = 0x04,
+    SPAWN_FLAG_ACTIVE           = 0x08, // always updated and keeps its grid loaded (per-spawn CREATURE_EXTRA_FLAG_ACTIVE)
 };
 
 struct CreatureSpawnTemplate
@@ -286,6 +287,7 @@ struct CreatureSpawnTemplate
     bool IsRunning() const { return (spawnFlags & SPAWN_FLAG_RUN_ON_SPAWN) != 0; }
     bool IsHovering() const { return (spawnFlags & SPAWN_FLAG_HOVER) != 0; }
     bool IsGravityDisabled() const { return (spawnFlags & SPAWN_FLAG_DISABLE_GRAVITY) != 0; }
+    bool IsActive() const { return (spawnFlags & SPAWN_FLAG_ACTIVE) != 0; }
 };
 
 // from `creature` table
@@ -789,6 +791,7 @@ class Creature : public Unit
         bool IsInGroup(Unit const* other, bool party/* = false*/, bool ignoreCharms/* = false*/) const override;
 
         MovementGeneratorType GetDefaultMovementType() const { return m_defaultMovementType; }
+        bool IsActiveSpawn() const;
         void SetDefaultMovementType(MovementGeneratorType mgt) { m_defaultMovementType = mgt; }
 
         bool IsVisibleInGridForPlayer(Player* pl) const override;
