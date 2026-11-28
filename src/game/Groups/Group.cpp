@@ -1497,9 +1497,11 @@ static void RewardGroupAtKill_helper(Player* pGroupGuy, Unit* pVictim, uint32 co
             Creature* creatureVictim = static_cast<Creature*>(pVictim);
             float rate = group_rate * float(pGroupGuy->GetLevel()) / sum_level;
 
-            // if is in dungeon then all receive full reputation at kill
+            // every eligible group member receives the full reputation of the kill;
+            // 1.12 never split kill reputation by group size (the old 1/count outside
+            // dungeons gave 5/3 = 1 Timbermaw per furbolg to a party of three)
             // rewarded any alive/dead/near_corpse group member
-            pGroupGuy->RewardReputation(creatureVictim, is_dungeon ? 1.0f : 1.0f / count);
+            pGroupGuy->RewardReputation(creatureVictim, 1.0f);
 
             // XP updated only for alive group member
             if (pGroupGuy->IsAlive() && not_gray_member_with_max_level &&
