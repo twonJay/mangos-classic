@@ -378,6 +378,12 @@ void WorldSession::HandlePetAction(WorldPacket& recv_data)
             charmInfo->SetSpellOpener();
             if (result == SPELL_CAST_OK)
             {
+                // pet bar casts (CMSG_PET_ACTION) must roll for teaching the owner too,
+                // like autocasts and CMSG_PET_CAST_SPELL do - otherwise manually used
+                // abilities (Dive, Dash, ...) can never be learned
+                if (pet)
+                    pet->CheckLearning(spellid);
+
                 //10% chance to play special pet attack talk, else growl
                 //actually this only seems to happen on special spells, fire shield for imp, torment for voidwalker, but it's stupid to check every spell
                 if (petUnit->GetTypeId() == TYPEID_UNIT)
